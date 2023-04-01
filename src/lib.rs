@@ -4,6 +4,16 @@ use std::{
     fs:: File,
     io::{self, BufRead, BufReader}
 };
+use std::cmp::Ordering::*;
+
+use crate::Column::*;
+
+enum Column<'a> {
+
+    Col1(&'a str),
+    Col2(&'a str),
+    Col3(&'a str)
+}
 
 type MyResult<T> = Result<T, Box<dyn Error>>;
 
@@ -19,107 +29,124 @@ pub struct Config {
     delimiter: String,
 }
 
+
 pub fn run(config: Config) -> MyResult<()> {
 
     let file1 = &config.file1;
     let file2 = &config.file2;
 
+
     if file1=="-" && file2=="-" {
         return Err(From::from("Both input files cannot be STDIN (\"-\")"));
     }
-    let _file1=open(file1)?;
-    let _file2 = open(file2)?;
 
-    println!("Opened {} and {}", file1, file2);
+    let case = |line: String| {
 
-    let mut lines1 = _file1.lines();
-    let mut lines2 = _file2.lines();
+        if config.insensitive {
+            line.to_lowercase()
+        }
+        else {
+            line
+        }
+    };
+
+    let print = |col: Column| {
+
+        let mut columns = vec![];
+
+        match col {
+
+            Col1(val) => {
+
+                if config.show_col1 {
+                    columns.push(val);
+                }
+            },
+            Col2(val) => {
+
+                if config.show_col2 {
+
+                    if config.show_col1 {
+
+                        columns.push("");
+                    }
+                    columns.push(val);
+                }
+            },
+
+            Col3(val) => {
+
+                if config.show_col3 {
+
+                    if config.show_col1 {
+
+                        columns.push("");
+                    }
+                    if config.show_col2 {
+
+                        columns.push("");
+                    }
+
+                    columns.push(val);
+                }
+            }
+        };
+        if !columns.is_empty() {
+
+            println!("{}", columns.join(&config.delimiter));
+        }
+
+    };
+
+    let mut lines1 = open(file1)?.lines().filter_map(Result::ok).map(case);
+    let mut lines2 = open(file2)?.lines().filter_map(Result::ok).map(case);
 
     let mut line1 = lines1.next();
     let mut line2 = lines2.next();
-    loop {
 
-        let mut result: [&str;3] = ["","",""];
-        let temp: String;
-        
-        if line1.as_ref().is_none() && line2.as_ref().is_none() {
-            break;
-        }
-        match line1 {
+    while line1.is_some() || line2.is_some() {
 
-            None => {
+        match (&line1, &line2) {
 
-                let temp:String = line2.unwrap().unwrap();
-                result[1] = &temp;
-                line2 = lines2.next();
-                if config.show_col2 {
-                    println!("{}", result.join(&config.delimiter));
-                    
+            (Some(val1), Some(val2)) => {
+
+                match val1.cmp(val2) {
+
+                    Equal => {
+                        print(Col3(val1));
+                        line1 = lines1.next();
+                        line2 = lines2.next();
+                    },
+                    Less => {
+                        print(Col1(val1));
+                        line1 = lines1.next();
+                    },
+
+                    Greater => {
+                        print(Col2(val2));
+                        line2 = lines2.next();
+                    }
                 }
-                continue;
+
+                
             },
-            Some(val1) =>  {
+            (Some(val1), None) => {
+                print(Col1(val1));
+                line1 = lines1.next();
+            },
+            (None, Some(val2)) => {
 
-                if line2.is_some() {
+                print(Col2(val2));
+                line2 = lines2.next();
+            },
 
-                    let actual_val2 = String::from("");
-                    let actual_val1 = val1.unwrap();
-                    //let new_result:[&str;3] = put_in_result(&actual_val1.as_str(), &actual_val2.as_str(), &config);
-                    if actual_val1 < actual_val2 {
-
-                        if config.show_col1{
-                            temp = actual_val1.clone();
-                            result[0]=&temp;
-                            
-                        }
-                        line1 = lines1.next();
-
-                    }
-                    else if actual_val1 > actual_val2 {
-
-                        if config.show_col2 {
-
-                            temp = actual_val2.clone();
-                            result[1] = &temp;
-                            
-                        }
-                        line2 = lines2.next();
-                    }
-                
-                    else {
-
-                        if config.show_col3 {
-                
-                            temp = actual_val1.clone();
-                            result[2] = &temp;
-                           
-                        }
-                        line1 = lines1.next();
-                        line2 = lines2.next();
-                    }
-                    println!("{}", result.join(&config.delimiter));
-                    
-                    continue;
-
-                } 
-                else {
-
-                    let temp: String = val1.unwrap();
-                    result[0] = &temp;
-                    line1 = lines1.next();
-                    if config.show_col1 {
-                        
-                        println!("{}", result.join(&config.delimiter));
-                       
-                    }
-                    continue;
-                }
-            }
-        } 
-       
+            _ => ()
 
 
+        }
     }
+
+    
 
    
     Ok(()) 
